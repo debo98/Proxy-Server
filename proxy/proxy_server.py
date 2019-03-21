@@ -3,6 +3,7 @@ import thread
 import socket 
 import sys
 from base64 import b64encode
+import time
 
 
 class ProxyServer :
@@ -14,10 +15,19 @@ class ProxyServer :
         self.blacklistfilePath = 'blacklist.txt'
         self.allowedURL = ['127.0.0.1']
         self.iiitports = range(20000,20100) 
-        self.allowedServers = range(20000,20201) 
+        self.allowedServers = range(20000,20201)
+        self.requestCount = {}
+        self.cachedRequest =[]
 
     def getRequest(self, client_socket, address, client_dict) :
         responseData = ""
+
+        request_tuple = (client_dict["port"], client_dict["file"])
+
+        #isnotmodifier check by response from server
+        if self.isCached(request_tuple) and self.isNotModified(socket, address, client_dict):
+            return #file data of self.cachedResponse[request_tuple]
+
         try:
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.connect((client_dict['url'], int(client_dict['port'])))
@@ -30,6 +40,7 @@ class ProxyServer :
                 response = server_socket.recv(self.bufferSize)
                 responseData += response
             
+            self.doCache(request_tuple)
             server_socket.close() 
 
         except Exception as e:
@@ -75,11 +86,26 @@ class ProxyServer :
         else:
             return False
 
-    def isChached(self) :
-        pass
+    def isCached(self, request_tuple) :
+        if request_tuple in self.cachedResponse.keys:
+            return True
+        else:
+            return False
     
-    def doCache(self):
-        pass
+    def doCache(self, request_tuple, response_cache):
+        milis = int(round(time.time() * 1000))
+        if self.requestCount[request_tuple]:
+            if milis-self.requestTime[request_tuple]<300000:
+                self.requestCount[request_tuple] += 1
+        else:
+            self.requestCount[request_tuple] = 1
+            self.requestTime[request_tuple] = milis
+
+        if self.requestCount[request_tuple] == 3:
+            if len(self.cachedResponse.keys) == 3:
+                self.cachedResponse.remove(cachedResponse[0])
+            #write response_cache in one of the files and store it's value in cachedResponse
+            self.requestCount.remove(request_tuple)
 
     def parse(self, data):
         """ Parsing Client Data """ 
@@ -89,7 +115,7 @@ class ProxyServer :
         client_dict["host"] = datalines[0].split('/')[2]
         client_dict["url"] = client_dict["host"].split(':')[0]
         client_dict["port"] = client_dict["host"].split(':')[1]
-        print datalines[2].split(': Basic ')
+        client_dict["file"] =  datalines[0].split('/')[3].split(' ')[0]
         auth_str = 'Basic'
         if auth_str in datalines[2] and len(datalines[2].split(': Basic ')) > 0:
             client_dict["auth"] = datalines[2].split(': Basic ')[1]
@@ -114,7 +140,6 @@ class ProxyServer :
             socket.send("You are outside IIIT\nYou can not access IIIT files\n")
             return 
 
-        print client_dict
         if int(client_dict["port"]) not in self.allowedServers:
             socket.send("You can only access server inside IIIT(20000-20099) or outside IIIT(20101-20200) ")
             return
@@ -134,7 +159,6 @@ class ProxyServer :
         elif client_dict["method"] == 'GET':
             if self.isBlocked(client_dict['host']):
                 if self.auth(client_dict["auth"]):
-                    print "Authorized to access blocked server"
                     responseData = self.getRequest(socket, address, client_dict)         
                     socket.send(responseData)         
                 else:
