@@ -15,6 +15,8 @@ Outside Server Ports : 20101-20200
 
                                         GET Request Handling
 --->Get Requests Allow Caching
+     : Caching will happen if a request is made 3 times within 5 minutes
+     : Caching memory limit is 3
 --->Get Requests do not allow binary files
 1. Request(GET) from server through proxy server
 -> python server/server.py {PORT}

@@ -4,6 +4,7 @@ import socket
 import sys
 from base64 import b64encode
 import time
+import os 
 
 
 class ProxyServer :
@@ -17,25 +18,27 @@ class ProxyServer :
         self.iiitports = range(20000,20100) 
         self.allowedServers = range(20000,20201)
         self.requestCount = {}
-        self.nextCacheSlot = 1 
-        self.cacheFileNames = {1: 'cache1.txt', 2:'cache2.txt', 3:'cache3.txt'}
+        self.nextCacheSlot = 0
+        self.cacheFileNames = {0: 'cache1.txt', 1:'cache2.txt', 2:'cache3.txt'}
         self.cachedResponse = {}
         self.requestTime = {}
+        self.cachedTime = {}
 
-    def insert_if_modified(self,client_dict):   
-
-        if os.path.isfile(cache_path):
-            last_mtime = time.strptime(time.ctime(os.path.getmtime(cache_path)), "%a %b %d %H:%M:%S %Y")
+    def addModtimeHeadrer(self,client_dict, mtime):   
 
         lines = client_dict["data"].splitlines()
+        print "lines !!! = ", lines
         while lines[len(lines)-1] == '':
             lines.remove('')
 
-        header = time.strftime("%a %b %d %H:%M:%S %Y", last_mtime)
+        print "Empty lines removed"
+
+        header =  mtime
         header = "If-Modified-Since: " + header
         lines.append(header)
 
-        client_dict["client_data"] = "\r\n".join(lines) + "\r\n\r\n"
+        client_dict["data"] = "\r\n".join(lines) + "\r\n\r\n"
+        print "header adding funtiotn done", client_dict['data']
         return client_dict
 
     def getRequest(self, client_socket, address, client_dict) :
@@ -44,14 +47,20 @@ class ProxyServer :
         request_tuple = (client_dict["port"], client_dict["file"])
 
         try:
+            if request_tuple in self.cachedTime.keys():
+                print "inside iifff"
+                client_dict = self.addModtimeHeadrer(client_dict, self.cachedTime[request_tuple]) 
+                print "after adding header"
+
+
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.connect((client_dict['url'], int(client_dict['port'])))
             server_socket.send(client_dict['data']) 
 
             response = server_socket.recv(self.bufferSize)
-            print "response", response
-            print 'MOD : ',"304 Not Modified" in response
-            if self.isCached(request_tuple):
+            print "RESPONSE OF SERVER", response
+            # print 'MOD : ',"304 Not Modified" in response
+            if self.isCached(request_tuple) and '530' not in response :
                 responseData += response
                 while len(response)>0 and response!=' ':
                     response = server_socket.recv(self.bufferSize)
@@ -74,10 +83,10 @@ class ProxyServer :
 
         except Exception as e:
             print "Error ", e
-            server_socket.close()
             client_socket.close()
 
         print "Returned:"
+        print responseData
         return responseData
 
     def postRequest(self, client_socket, address, client_dict) :
@@ -129,13 +138,12 @@ class ProxyServer :
         print "overall count" , self.requestCount
         # print "check if already refered", self.requestCount[request_tuple] 
         if request_tuple in self.requestCount.keys():
-            if milis-self.requestTime[request_tuple]<300000:
+            if milis-self.requestTime[request_tuple]<30000:
                 self.requestCount[request_tuple] += 1
             else:
                 if self.requestCount[request_tuple] > 0:
-                    self.requestCount[request_tuple] -= 1 
-                    
-
+                    self.requestCount[request_tuple] = 1
+                    self.requestTime[request_tuple] = milis
         else:
             self.requestCount[request_tuple] = 1
             self.requestTime[request_tuple] = milis
@@ -150,7 +158,7 @@ class ProxyServer :
             f.close()            
             
             self.cachedResponse[request_tuple] = self.cacheFileNames[self.nextCacheSlot] 
-
+            self.cachedTime[request_tuple] = time.ctime(os.path.getmtime(self.cacheFileNames[self.nextCacheSlot]))
             self.nextCacheSlot += 1 
             self.nextCacheSlot = self.nextCacheSlot % 3 
 
@@ -216,7 +224,6 @@ class ProxyServer :
                 else:
                     socket.send("You are not authorized to access this server\n")
             else:
-                client_dict = self.insert_if_modified(client_dict)
                 responseData = self.getRequest(socket, address, client_dict)         
                 socket.send(responseData)         
 

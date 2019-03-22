@@ -90,22 +90,23 @@ class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
             return 
 
-        print "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", self.headers.get('If-Modified-Since', None)
+        print "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", self.headers.get('If-Modified-Since')
         if self.headers.get('If-Modified-Since', None): 
             if os.path.isfile(filename[-1]):
                 print "inside"
-                a = time.strptime(time.ctime(os.path.getmtime(filename[-1])), "%a %b %d %H:%M:%S %Y")
-                # b = time.time()
-                # c = os.path.getmtime(filename[-1]) 
-                b = time.strptime(self.headers.get('If-Modified-Since', None), "%a %b %d %H:%M:%S %Y")
-                print 'a', a, 'b', b, 'c', c, 'time since', b-c
-                if a < b:
-                    self.send_response(304)
+                a = time.ctime(os.path.getmtime(filename[-1]))
+                b = self.headers.get('If-Modified-Since', None)
+                # b > a means b is older
+                print 'a:', a, 'b:', b, 'a<b', a<b
+                if a > b:
+                    print "INSIDE SECONF IF IN PROXY SERVER"
+                    self.send_response(530)
+                    fileContents = fp.read()
                     self.send_header('Cache-control', 'must-revalidate')
                     self.end_headers()
+                    self.wfile.write(fileContents)
+                    fp.close()
                     return None
-        # SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
-        # return
 
         is_file_binary = IsFileBinary()
 
