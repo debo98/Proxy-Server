@@ -17,16 +17,31 @@ class ProxyServer :
         self.iiitports = range(20000,20100) 
         self.allowedServers = range(20000,20201)
         self.requestCount = {}
-        self.cachedRequest =[]
+        self.nextCacheSlot = 1 
+        self.cacheFileNames = {1: 'cache1.txt', 2:'cache2.txt', 3:'cache3.txt'}
+        self.cachedResponse = {}
+        self.requestTime = {}
+
+    def insert_if_modified(self,client_dict):   
+
+        if os.path.isfile(cache_path):
+            last_mtime = time.strptime(time.ctime(os.path.getmtime(cache_path)), "%a %b %d %H:%M:%S %Y")
+
+        lines = client_dict["data"].splitlines()
+        while lines[len(lines)-1] == '':
+            lines.remove('')
+
+        header = time.strftime("%a %b %d %H:%M:%S %Y", last_mtime)
+        header = "If-Modified-Since: " + header
+        lines.append(header)
+
+        client_dict["client_data"] = "\r\n".join(lines) + "\r\n\r\n"
+        return client_dict
 
     def getRequest(self, client_socket, address, client_dict) :
         responseData = ""
 
         request_tuple = (client_dict["port"], client_dict["file"])
-
-        #isnotmodifier check by response from server
-        if self.isCached(request_tuple) and self.isNotModified(socket, address, client_dict):
-            return #file data of self.cachedResponse[request_tuple]
 
         try:
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -34,13 +49,27 @@ class ProxyServer :
             server_socket.send(client_dict['data']) 
 
             response = server_socket.recv(self.bufferSize)
-            flag = 0
-            responseData += response
-            while len(response)>0 and response!=' ':
-                response = server_socket.recv(self.bufferSize)
+            print "response", response
+            print 'MOD : ',"304 Not Modified" in response
+            if self.isCached(request_tuple):
                 responseData += response
-            
-            self.doCache(request_tuple)
+                while len(response)>0 and response!=' ':
+                    response = server_socket.recv(self.bufferSize)
+                    responseData += response
+                print "Cached version being returned"
+                cacheFilename = self.cachedResponse[request_tuple]
+                f = open(cacheFilename, 'r') 
+                cacheFileContent = f.read()
+                responseData = cacheFileContent
+            else: 
+                print "Live version being returned"
+                responseData += response
+                while len(response)>0 and response!=' ':
+                    response = server_socket.recv(self.bufferSize)
+                    responseData += response
+                print "Requestu tuple", request_tuple
+                self.doCache(request_tuple, responseData)
+        
             server_socket.close() 
 
         except Exception as e:
@@ -59,7 +88,6 @@ class ProxyServer :
             server_socket.send(client_dict['data']) 
 
             response = server_socket.recv(self.bufferSize)
-            flag = 0
             responseData += response
             while len(response)>0 and response!=' ':
                 response = server_socket.recv(self.bufferSize)
@@ -87,25 +115,49 @@ class ProxyServer :
             return False
 
     def isCached(self, request_tuple) :
-        if request_tuple in self.cachedResponse.keys:
+        print "in iscached", self.cachedResponse.keys()
+        print 'checll'
+        if request_tuple in self.cachedResponse.keys():
+            print 'truuuu'
             return True
         else:
+            print 'false ::(('
             return False
     
     def doCache(self, request_tuple, response_cache):
         milis = int(round(time.time() * 1000))
-        if self.requestCount[request_tuple]:
+        print "overall count" , self.requestCount
+        # print "check if already refered", self.requestCount[request_tuple] 
+        if request_tuple in self.requestCount.keys():
             if milis-self.requestTime[request_tuple]<300000:
                 self.requestCount[request_tuple] += 1
+            else:
+                if self.requestCount[request_tuple] > 0:
+                    self.requestCount[request_tuple] -= 1 
+                    
+
         else:
             self.requestCount[request_tuple] = 1
             self.requestTime[request_tuple] = milis
 
         if self.requestCount[request_tuple] == 3:
-            if len(self.cachedResponse.keys) == 3:
-                self.cachedResponse.remove(cachedResponse[0])
+            if len(self.cachedResponse.keys()) == 3:
+                self.cachedResponse = {key:val for key, val in self.cachedResponse.items() if val != self.cacheFileNames[self.nextCacheSlot]}
+            
+            # response cache is the varianble to be written 
+            f = open(self.cacheFileNames[self.nextCacheSlot], 'w') 
+            f.write(response_cache)
+            f.close()            
+            
+            self.cachedResponse[request_tuple] = self.cacheFileNames[self.nextCacheSlot] 
+
+            self.nextCacheSlot += 1 
+            self.nextCacheSlot = self.nextCacheSlot % 3 
+
             #write response_cache in one of the files and store it's value in cachedResponse
-            self.requestCount.remove(request_tuple)
+            self.requestCount = {key:val for key, val in self.requestCount.items() if key != request_tuple}
+
+            return
 
     def parse(self, data):
         """ Parsing Client Data """ 
@@ -164,6 +216,7 @@ class ProxyServer :
                 else:
                     socket.send("You are not authorized to access this server\n")
             else:
+                client_dict = self.insert_if_modified(client_dict)
                 responseData = self.getRequest(socket, address, client_dict)         
                 socket.send(responseData)         
 

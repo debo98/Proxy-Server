@@ -2,6 +2,8 @@ import SimpleHTTPServer
 import SocketServer
 import sys
 import mimetypes
+import os
+import time
 
 PORT = int(sys.argv[1])
 
@@ -41,6 +43,23 @@ class IsFileBinary:
 
 class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
+    # def send_head(self):
+    #     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    #     if self.command != "POST" and self.headers.get('If-Modified-Since', None):
+    #         filename = self.path.strip("/")
+    #         if os.path.isfile(filename):
+    #             a = time.strptime(time.ctime(os.path.getmtime(filename)), "%a %b %d %H:%M:%S %Y")
+    #             b = 0
+    #             # b = time.strptime(self.headers.get('If-Modified-Since', None), "%a %b %d %H:%M:%S %Y")
+    #             print 'a', a, 'b', b
+    #             if a < b:
+    #                 self.send_response(304)
+    #                 self.send_header('Cache-control', 'must-revalidate')
+    #                 self.end_headers()
+    #                 return None
+    #     SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
+    #     return
+
     def do_POST(self):
         filename = self.path.split('/')
         try:
@@ -60,6 +79,7 @@ class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return
 
     def do_GET(self):
+        print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
         filename = self.path.split('/')
         try:
             fp = open(filename[-1],'r')
@@ -69,6 +89,23 @@ class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             self.wfile.write("File not found\n\n")  
             SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
             return 
+
+        print "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", self.headers.get('If-Modified-Since', None)
+        if self.headers.get('If-Modified-Since', None): 
+            if os.path.isfile(filename[-1]):
+                print "inside"
+                a = time.strptime(time.ctime(os.path.getmtime(filename[-1])), "%a %b %d %H:%M:%S %Y")
+                # b = time.time()
+                # c = os.path.getmtime(filename[-1]) 
+                b = time.strptime(self.headers.get('If-Modified-Since', None), "%a %b %d %H:%M:%S %Y")
+                print 'a', a, 'b', b, 'c', c, 'time since', b-c
+                if a < b:
+                    self.send_response(304)
+                    self.send_header('Cache-control', 'must-revalidate')
+                    self.end_headers()
+                    return None
+        # SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
+        # return
 
         is_file_binary = IsFileBinary()
 

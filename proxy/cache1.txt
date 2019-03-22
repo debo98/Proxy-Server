@@ -1,0 +1,9 @@
+HTTP/1.0 200 OK
+Server: SimpleHTTP/0.6 Python/2.7.15rc1
+Date: Fri, 22 Mar 2019 11:10:53 GMT
+
+This is sample data from server.
+Hello from the other side!
+
+Modified 
+
